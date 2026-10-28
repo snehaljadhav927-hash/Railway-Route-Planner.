@@ -1,0 +1,582 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Railway Route Planner - A* Algorithm</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #f1f5f9;
+    color: #1e293b;
+}
+
+header {
+    background: #12304a;
+    color: white;
+    padding: 24px 16px;
+    text-align: center;
+}
+
+header h1 {
+    margin: 0 0 8px;
+}
+
+header p {
+    margin: 0;
+    color: #cbd5e1;
+}
+
+.container {
+    max-width: 1000px;
+    margin: 25px auto;
+    padding: 0 16px;
+}
+
+.panel {
+    background: white;
+    padding: 22px;
+    margin-bottom: 20px;
+    border-radius: 12px;
+    box-shadow: 0 3px 12px #0000000d;
+}
+
+.controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+}
+
+select, button {
+    width: 100%;
+    padding: 12px;
+    border-radius: 7px;
+    font-size: 15px;
+}
+
+select {
+    border: 1px solid #cbd5e1;
+    background: white;
+}
+
+button {
+    margin-top: 18px;
+    background: #087f8c;
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+button:hover {
+    background: #066773;
+}
+
+button:focus-visible, select:focus-visible {
+    outline: 3px solid #38bdf8;
+    outline-offset: 2px;
+}
+
+#result {
+    line-height: 1.8;
+    overflow-wrap: anywhere;
+}
+
+.route {
+    color: #087f8c;
+    font-weight: bold;
+}
+
+.stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 15px;
+}
+
+.stat {
+    background: #ecfeff;
+    padding: 15px;
+    border-radius: 8px;
+}
+
+.stat strong {
+    display: block;
+    font-size: 23px;
+    color: #087f8c;
+}
+
+#network {
+    width: 100%;
+    height: auto;
+    min-height: 250px;
+    background: #f8fafc;
+    border-radius: 8px;
+}
+
+.edge {
+    stroke: #94a3b8;
+    stroke-width: 3;
+}
+
+.active-edge {
+    stroke: #0891b2;
+    stroke-width: 6;
+}
+
+.station {
+    fill: #ffffff;
+    stroke: #334155;
+    stroke-width: 3;
+}
+
+.active-station {
+    fill: #fbbf24;
+    stroke: #b45309;
+}
+
+.station-label {
+    font-size: 12px;
+    fill: #1e293b;
+    font-weight: bold;
+}
+
+.legend {
+    color: #64748b;
+    font-size: 13px;
+    margin-top: 10px;
+}
+
+footer {
+    text-align: center;
+    color: #64748b;
+    padding: 20px;
+}
+
+@media (max-width: 600px) {
+    .controls, .stats {
+        grid-template-columns: 1fr;
+    }
+
+    .panel {
+        padding: 16px;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+    <h1>🚆 Railway Route Planner</h1>
+    <p>Find an optimal railway route using the A* algorithm</p>
+</header>
+
+<main class="container">
+
+    <section class="panel">
+        <h2>Plan Your Journey</h2>
+
+        <div class="controls">
+            <div>
+                <label for="source">Source Station</label>
+                <select id="source"></select>
+            </div>
+
+            <div>
+                <label for="destination">Destination Station</label>
+                <select id="destination"></select>
+            </div>
+        </div>
+
+        <button id="findRoute">Find Best Route</button>
+    </section>
+
+    <section class="panel">
+        <h2>Railway Network Map</h2>
+
+        <svg id="network"
+             viewBox="0 0 700 360"
+             role="img"
+             aria-label="Schematic railway network map">
+        </svg>
+
+        <p class="legend">
+            Gray lines: railway connections.
+            Blue lines: calculated route.
+            Yellow circles: stations on the route.
+            <br>
+            Schematic network; not a geographic or live railway map.
+        </p>
+    </section>
+
+    <section class="panel" aria-live="polite">
+        <h2>Route Details</h2>
+        <div id="result">
+            Select your stations and click Find Best Route.
+        </div>
+    </section>
+
+    <section class="panel">
+        <h2>How A* Works</h2>
+        <p>
+            A* evaluates each station using the function:
+        </p>
+        <p><strong>f(n) = g(n) + h(n)</strong></p>
+        <ul>
+            <li><strong>g(n):</strong> Distance traveled from the source.</li>
+            <li><strong>h(n):</strong> Estimated remaining distance to the destination.</li>
+            <li><strong>f(n):</strong> Estimated total route distance through a station.</li>
+        </ul>
+        <p>
+            This demonstration uses straight-line estimates as the heuristic
+            and track distances as edge costs. Its railway data is illustrative.
+        </p>
+    </section>
+
+</main>
+
+<footer>
+    Railway Route Planner | A* Pathfinding Demonstration
+</footer>
+
+<script>
+// ---------------------------------------------
+// 1. Sample railway stations and map coordinates
+// ---------------------------------------------
+
+const stations = {
+    Mumbai:    { x: 90,  y: 170 },
+    Pune:      { x: 225, y: 235 },
+    Nashik:    { x: 220, y: 85  },
+    Surat:     { x: 220, y: 35  },
+    Vadodara:  { x: 350, y: 65  },
+    Ahmedabad: { x: 460, y: 45  },
+    Goa:       { x: 90,  y: 320 },
+    Solapur:   { x: 365, y: 270 },
+    Hyderabad: { x: 515, y: 260 },
+    Nagpur:    { x: 560, y: 125 },
+    Bhopal:    { x: 470, y: 150 },
+    Delhi:     { x: 590, y: 35  }
+};
+
+// Undirected railway connections.
+// Distances are illustrative, in kilometers.
+
+const edges = [
+    ["Mumbai", "Pune", 150],
+    ["Mumbai", "Nashik", 170],
+    ["Mumbai", "Goa", 590],
+    ["Nashik", "Surat", 230],
+    ["Nashik", "Pune", 210],
+    ["Surat", "Vadodara", 150],
+    ["Vadodara", "Ahmedabad", 110],
+    ["Vadodara", "Bhopal", 430],
+    ["Pune", "Solapur", 250],
+    ["Pune", "Hyderabad", 560],
+    ["Solapur", "Hyderabad", 300],
+    ["Ahmedabad", "Delhi", 930],
+    ["Ahmedabad", "Bhopal", 580],
+    ["Bhopal", "Nagpur", 350],
+    ["Bhopal", "Delhi", 780],
+    ["Nagpur", "Delhi", 1050],
+    ["Nagpur", "Hyderabad", 500]
+];
+
+// ---------------------------------------------
+// 2. Build an adjacency list
+// ---------------------------------------------
+
+const graph = {};
+
+Object.keys(stations).forEach(name => {
+    graph[name] = [];
+});
+
+edges.forEach(([from, to, distance]) => {
+    graph[from].push({ station: to, distance });
+    graph[to].push({ station: from, distance });
+});
+
+// ---------------------------------------------
+// 3. Heuristic: straight-line distance on map
+// ---------------------------------------------
+
+function heuristic(current, goal) {
+    const a = stations[current];
+    const b = stations[goal];
+
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+
+    // Map coordinate distance scaled to approximate kilometers.
+    return Math.sqrt(dx * dx + dy * dy) * 2;
+}
+
+// ---------------------------------------------
+// 4. A* search algorithm
+// ---------------------------------------------
+
+function aStar(start, goal) {
+    const openSet = new Set([start]);
+
+    const cameFrom = {};
+    const gScore = {};
+    const fScore = {};
+
+    Object.keys(stations).forEach(name => {
+        gScore[name] = Infinity;
+        fScore[name] = Infinity;
+    });
+
+    gScore[start] = 0;
+    fScore[start] = heuristic(start, goal);
+
+    while (openSet.size > 0) {
+        // Find the open station with minimum f-score.
+        let current = null;
+
+        for (const station of openSet) {
+            if (
+                current === null ||
+                fScore[station] < fScore[current]
+            ) {
+                current = station;
+            }
+        }
+
+        if (current === goal) {
+            const path = [current];
+
+            while (cameFrom[current] !== undefined) {
+                current = cameFrom[current];
+                path.unshift(current);
+            }
+
+            return {
+                path,
+                distance: gScore[goal]
+            };
+        }
+
+        openSet.delete(current);
+
+        for (const neighbor of graph[current]) {
+            const tentativeG =
+                gScore[current] + neighbor.distance;
+
+            if (tentativeG < gScore[neighbor.station]) {
+                cameFrom[neighbor.station] = current;
+
+                gScore[neighbor.station] = tentativeG;
+
+                fScore[neighbor.station] =
+                    tentativeG +
+                    heuristic(neighbor.station, goal);
+
+                openSet.add(neighbor.station);
+            }
+        }
+    }
+
+    return null;
+}
+
+// ---------------------------------------------
+// 5. Populate station selection menus
+// ---------------------------------------------
+
+const sourceSelect = document.getElementById("source");
+const destinationSelect = document.getElementById("destination");
+
+Object.keys(stations).forEach(name => {
+    sourceSelect.add(new Option(name, name));
+    destinationSelect.add(new Option(name, name));
+});
+
+sourceSelect.value = "Mumbai";
+destinationSelect.value = "Hyderabad";
+
+// ---------------------------------------------
+// 6. Draw railway network and route
+// ---------------------------------------------
+
+function drawNetwork(route = []) {
+    const svg = document.getElementById("network");
+    svg.replaceChildren();
+
+    const activeEdges = new Set();
+
+    for (let i = 0; i < route.length - 1; i++) {
+        activeEdges.add(
+            [route[i], route[i + 1]].sort().join("|")
+        );
+    }
+
+    // Draw railway connections.
+    edges.forEach(([from, to]) => {
+        const a = stations[from];
+        const b = stations[to];
+
+        const line = document.createElementNS(
+            "http://www.w3.org/2000/svg", "line"
+        );
+
+        line.setAttribute("x1", a.x);
+        line.setAttribute("y1", a.y);
+        line.setAttribute("x2", b.x);
+        line.setAttribute("y2", b.y);
+
+        const key = [from, to].sort().join("|");
+
+        line.setAttribute(
+            "class",
+            activeEdges.has(key) ? "active-edge" : "edge"
+        );
+
+        svg.appendChild(line);
+    });
+
+    // Draw stations and their labels.
+    Object.entries(stations).forEach(([name, point]) => {
+        const isActive = route.includes(name);
+
+        const circle = document.createElementNS(
+            "http://www.w3.org/2000/svg", "circle"
+        );
+
+        circle.setAttribute("cx", point.x);
+        circle.setAttribute("cy", point.y);
+        circle.setAttribute("r", 7);
+        circle.setAttribute(
+            "class",
+            isActive ? "active-station" : "station"
+        );
+
+        const label = document.createElementNS(
+            "http://www.w3.org/2000/svg", "text"
+        );
+
+        label.setAttribute("x", point.x);
+        label.setAttribute("y", point.y - 12);
+        label.setAttribute("text-anchor", "middle");
+        label.setAttribute("class", "station-label");
+        label.textContent = name;
+
+        svg.appendChild(circle);
+        svg.appendChild(label);
+    });
+}
+
+// ---------------------------------------------
+// 7. Find route and show journey details
+// ---------------------------------------------
+
+function findRoute() {
+    const source = sourceSelect.value;
+    const destination = destinationSelect.value;
+    const result = document.getElementById("result");
+
+    if (source === destination) {
+        drawNetwork([source]);
+
+        result.textContent =
+            "Source and destination are the same station. " +
+            "Total distance: 0 km.";
+
+        return;
+    }
+
+    const answer = aStar(source, destination);
+
+    if (!answer) {
+        drawNetwork();
+
+        result.textContent =
+            "No railway route exists between these stations.";
+
+        return;
+    }
+
+    drawNetwork(answer.path);
+
+    // Illustrative average speed of 60 km/h.
+    const travelHours = answer.distance / 60;
+
+    const hours = Math.floor(travelHours);
+    const minutes = Math.round((travelHours - hours) * 60);
+
+    const routeList = answer.path.join(" → ");
+
+    result.replaceChildren();
+
+    const routeHeading = document.createElement("p");
+    routeHeading.className = "route";
+    routeHeading.textContent = routeList;
+    result.appendChild(routeHeading);
+
+    const stats = document.createElement("div");
+    stats.className = "stats";
+
+    const distanceStat = document.createElement("div");
+    distanceStat.className = "stat";
+
+    const distanceValue = document.createElement("strong");
+    distanceValue.textContent =
+        answer.distance.toLocaleString() + " km";
+
+    distanceStat.appendChild(distanceValue);
+    distanceStat.appendChild(
+        document.createTextNode("Total track distance")
+    );
+
+    const timeStat = document.createElement("div");
+    timeStat.className = "stat";
+
+    const timeValue = document.createElement("strong");
+    timeValue.textContent =
+        hours + " h " + minutes + " min";
+
+    timeStat.appendChild(timeValue);
+    timeStat.appendChild(
+        document.createTextNode("Estimated travel time")
+    );
+
+    stats.appendChild(distanceStat);
+    stats.appendChild(timeStat);
+    result.appendChild(stats);
+
+    const note = document.createElement("p");
+    note.textContent =
+        "Note: Route distances and travel times are illustrative. " +
+        "Actual railway services, timetables, stops and delays are not included.";
+
+    result.appendChild(note);
+}
+
+// ---------------------------------------------
+// 8. Connect events and display initial network
+// ---------------------------------------------
+
+document.getElementById("findRoute")
+    .addEventListener("click", findRoute);
+
+drawNetwork();
+findRoute();
+</script>
+
+</body>
+</html>
